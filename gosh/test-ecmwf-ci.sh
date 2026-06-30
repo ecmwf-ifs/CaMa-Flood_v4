@@ -23,8 +23,9 @@ echo $BASE
 module load prgenv/intel
 module load netcdf4/4.7.4
 
+NCPUS=16
 #*** 0c. OpenMP thread number
-export OMP_NUM_THREADS=16                    # OpenMP cpu num
+export OMP_NUM_THREADS=${NCPUS}                    # OpenMP cpu num
 
 #================================================
 # (1) Experiment setting
@@ -51,10 +52,11 @@ cd ${RDIR}
 
 #*** pull input files from data repository
 DATA_REPO="/perm/dimw/cmf_debugging/cmf_tests/cmf_v420_pkg"
-for f in nextxy.bin ctmare.bin elevtn.bin nxtdst.bin rivlen.bin fldhgt.bin rivwth_gwdlr.bin rivhgt.bin rivman.bin bifprm.txt inpmat_test-1deg.bin diminfo_test-1deg.txt; do
+FILES="nextxy.bin ctmare.bin elevtn.bin nxtdst.bin rivlen.bin fldhgt.bin rivwth_gwdlr.bin rivhgt.bin rivman.bin bifprm.txt inpmat_test-1deg.bin diminfo_test-1deg.txt"
+for f in $FILES; do
     cp ${DATA_REPO}/map/glb_15min/$f ${RDIR}/input
 done
-cp ${DATA_REPO}/inp/test_1deg/runoff/Roff____2001010[123].one ${RDIR}/input
+cp ${DATA_REPO}/inp/test_1deg/runoff/Roff____2001010[1234].one ${RDIR}/input
 
 #*** namelist settings
 rm -f ${NMLIST}
@@ -83,7 +85,7 @@ SDAY    = 1                      !  day
 SHOUR   = 0                     !  houe
 EYEAR   = 2001                     ! end year
 EMON    = 1                      !  month 
-EDAY    = 4                     !  day 
+EDAY    = 5                     !  day 
 EHOUR   = 0                     !  hour
 /
 &NMAP
@@ -148,12 +150,20 @@ echo "Running ${EXE} in ${RDIR}"
 time ./${EXE}
 
 #================================================
-# (5) Post-processing norms
+# (5) Post-processing norms and check against known good values
 module load cdo
 rm -f cmf_norms
+echo file  mean  min  max > cmf_norms
 for f  in output/*.nc; do
-    echo $f mean values: >> cmf_norms
-    cdo -s infon $f >> cmf_norms
+    printf "%s " $f >> cmf_norms
+    for st in mean min max; do
+        stval=$(cdo -s outputf,%20.8f -fld${st} -tim${st} ${f})
+        printf "%s " "$stval" >> cmf_norms
+    done
+    echo >> cmf_norms
 done
+
+diff $BASE/gosh/cmf_norms_known_good cmf_norms || \
+    { echo "Error: Output norms differ from known good values"; exit 1; }
 
 exit 0
