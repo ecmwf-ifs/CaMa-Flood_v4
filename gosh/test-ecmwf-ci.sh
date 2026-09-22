@@ -86,13 +86,10 @@ cd ${RUN_DIR}
 
 #*** 2b. for new simulation, remove old files in running directory
 
-#*** pull input files from data repository
-DATA_REPO="/perm/dimw/cmf_debugging/cmf_tests/cmf_v420_pkg"
-FILES="nextxy.bin ctmare.bin elevtn.bin nxtdst.bin rivlen.bin fldhgt.bin rivwth_gwdlr.bin rivhgt.bin rivman.bin bifprm.txt inpmat_test-1deg.bin diminfo_test-1deg.txt"
-for f in $FILES; do
-    cp ${DATA_REPO}/map/glb_15min/$f ${RDIR}/input
-done
-cp ${DATA_REPO}/inp/test_1deg/runoff/Roff____2001010[1234].one ${RDIR}/input
+#*** pull input files from data repository (DATA_REPO set above / via command line)
+curl -o glb_15min.tar.gz ${DATA_REPO}/glb_15min.tar.gz
+tar -xzf glb_15min.tar.gz
+mv glb_15min/* input/
 
 #*** namelist settings
 rm -f ${NMLIST}
