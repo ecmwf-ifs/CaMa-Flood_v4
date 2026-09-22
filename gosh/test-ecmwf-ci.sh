@@ -12,10 +12,50 @@
 #  distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
 # See the License for the specific language governing permissions and limitations under the License.
 #==========================================================
+
+#*** defaults, overridable on the command line
+BASE=$(pwd)/..                              # CaMa-Flood base directory
+DATA_REPO="https://sites.ecmwf.int/repository/ecland/camaflood"   # input data repository
+CDO_FMT="%20.8f"                            # cdo outputf precision format
+EXE_PREFIX="time"                           # command prepended to the model executable
+RUN_DIR="./glb_15min_test"                  # directory to run the simulation
+NCPUS=16                                    # number of OpenMP threads
+
+usage() {
+    cat << EOU
+Usage: $(basename $0) [options]
+
+Run a short, low-resolution CaMa-Flood simulation and compare output norms
+against known good values.
+
+Options:
+  -b, --base DIR        CaMa-Flood base directory (default: ${BASE})
+  -r, --run-dir DIR     directory to run the simulation (default: ${RUN_DIR})
+  -d, --data-repo DIR   input data repository (default: ${DATA_REPO})
+  -p, --precision FMT   cdo outputf format used for the norms (default: ${CDO_FMT})
+  -x, --exe-prefix CMD  command prepended to ./MAIN_cmf, e.g. an MPI launcher
+                        (default: "${EXE_PREFIX}", use "" for none)
+  -n, --ncpus N         number of OpenMP threads (default: ${NCPUS})
+  -h, --help            show this help and exit
+EOU
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -b|--base)       BASE="$2"; shift 2 ;;
+        -r|--run-dir)    RUN_DIR="$2"; shift 2 ;;
+        -d|--data-repo)  DATA_REPO="$2"; shift 2 ;;
+        -p|--precision)  CDO_FMT="$2"; shift 2 ;;
+        -x|--exe-prefix) EXE_PREFIX="$2"; shift 2 ;;
+        -n|--ncpus)      NCPUS="$2"; shift 2 ;;
+        -h|--help)       usage; exit 0 ;;
+        *) echo "Error: unknown argument '$1'" >&2; usage >&2; exit 1 ;;
+    esac
+done
+
 set -xe
 
-#*** 0a. Set CaMa-Flood base directory
-BASE=`pwd`/..
+#*** 0a. Set CaMa-Flood source directory (BASE set above / via command line)
 SRC=${BASE}/src
 
 echo $BASE
@@ -23,18 +63,14 @@ echo $BASE
 module load prgenv/intel
 module load netcdf4/4.7.4
 
-NCPUS=16
-#*** 0c. OpenMP thread number
+#*** 0c. OpenMP thread number (NCPUS set above / via command line)
 export OMP_NUM_THREADS=${NCPUS}                    # OpenMP cpu num
 
 #================================================
 # (1) Experiment setting
-# -- some non-default options can be modified in NAMELIST section 
 
 #============================
 #*** 1a. Experiment directory setting
-EXP="test-ecmwf-ci"                       # experiment name (output directory name)
-RDIR=${BASE}/out/${EXP}                     # directory to run CaMa-Flood
 EXE="MAIN_cmf"                              # Execute file name
 PROG=${SRC}/${EXE}                     # location of Fortran main program
 NMLIST="./input_cmf.nam"                    # standard namelist
@@ -44,9 +80,9 @@ LOGOUT="./log_CaMa.txt"                     # standard log output
 # (2) Setup
 
 #*** 2a. create running dir 
-rm -rf ${RDIR}
-mkdir -p ${RDIR}/input ${RDIR}/output
-cd ${RDIR}
+rm -rf ${RUN_DIR}
+mkdir -p ${RUN_DIR}/input ${RUN_DIR}/output
+cd ${RUN_DIR}
 
 #*** 2b. for new simulation, remove old files in running directory
 
@@ -146,8 +182,8 @@ ln -s ${PROG} ./${EXE}
 
 #================================================
 # (4) Run model
-echo "Running ${EXE} in ${RDIR}"
-time ./${EXE}
+echo "Running ${EXE} in ${RUN_DIR}"
+${EXE_PREFIX} ./${EXE}
 
 #================================================
 # (5) Post-processing norms and check against known good values
@@ -157,7 +193,7 @@ echo file  mean  min  max > cmf_norms
 for f  in output/*.nc; do
     printf "%s " $f >> cmf_norms
     for st in mean min max; do
-        stval=$(cdo -s outputf,%20.8f -fld${st} -tim${st} ${f})
+        stval=$(cdo -s outputf,${CDO_FMT} -fld${st} -tim${st} ${f})
         printf "%s " "$stval" >> cmf_norms
     done
     echo >> cmf_norms
