@@ -1,0 +1,68 @@
+name: ci-hpc
+
+on:
+  # Trigger the workflow on all pull requests
+  pull_request: ~
+
+  # Allow workflow to be dispatched on demand
+  workflow_dispatch: ~
+
+  # Trigger after public PR approved for CI
+  pull_request_target:
+    types: [labeled]
+
+jobs:
+  ci-hpc:
+    name: ci-hpc
+    if: ${{ !github.event.pull_request.head.repo.fork && github.event.action != 'labeled' || github.event.label.name == 'approved-for-ci' }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        name:
+          - ac-cpu intel
+
+        include:
+          - name: ac-cpu intel
+            site: ac-batch
+            sbatch_options: |
+              #SBATCH --time=00:30:00
+              #SBATCH --nodes=1
+              #SBATCH --ntasks=1
+              #SBATCH --cpus-per-task=16
+              #SBATCH --hint=nomultithread
+              #SBATCH --mem=8GB
+              #SBATCH --qos=np
+
+    runs-on: [self-hosted, linux, hpc]
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: ecmwf-actions/reusable-workflows/ci-hpc-generic@v2
+        with:
+          site: ${{ matrix.site }}
+          troika_user: ${{ secrets.HPC_CI_SSH_USER }}
+          sbatch_options: ${{ matrix.sbatch_options }}
+          template: |
+            REPO=${{ github.event.pull_request.head.repo.full_name || github.repository }}
+            SHA=${{ github.event.pull_request.head.sha || github.sha }}
+            { set +x; } 2>/dev/null # trace off
+
+            echo "::group::Checkout $(basename $REPO)"
+            { set -x; } 2>/dev/null # trace on
+            mkdir -p $REPO
+            pushd $REPO
+            git init
+            git remote add origin ${{ github.server_url }}/$REPO
+            git fetch origin $SHA
+            git reset --hard FETCH_HEAD
+            { set +x; } 2>/dev/null # trace off
+            echo "::endgroup::"
+
+            echo "::group::test-ecmwf-ci"
+            { set -x; } 2>/dev/null # trace on
+            cd gosh
+            ./test-ecmwf-ci.sh
+            { set +x; } 2>/dev/null # trace off
+            echo "::endgroup::"
